@@ -1,0 +1,87 @@
+Description: Tracks electricity consumed from utility provider and produced by solar installation
+
+Resources:
+  DeploymentBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketEncryption: 
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: aws:kms
+      BucketName:
+        Fn::Sub: 'heliostracker-deployments-${AWS::AccountId}'
+      OwnershipControls: 
+        Rules:
+        - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration: 
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      Tags: 
+      - Key: Project
+        Value: HeliosTracker
+      VersioningConfiguration: 
+        Status: Enabled
+
+  DeploymentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket:
+        Ref: DeploymentBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Deny
+          Principal: '*'
+          Action: 's3:*'
+          Resource:
+          - Fn::Sub: 'arn:${AWS::Partition}:s3:::${DeploymentBucket}'
+          - Fn::Sub: 'arn:${AWS::Partition}:s3:::${DeploymentBucket}/*'
+          Condition:
+            BoolIfExists:
+              'aws:SecureTransport': 'false'
+
+  ConEdCredentuals:
+    Type: AWS::SecretsManager::Secret
+    Properties: 
+      Description: Secret for ConEd credentials
+      Name: ConEd_credentials
+      Tags: 
+      - Key: Project
+        Value: HeliosTracker
+
+  SunnyPortalCredentuals:
+    Type: AWS::SecretsManager::Secret
+    Properties: 
+      Description: Sunny portal credentials
+      Name: SunnyPortal_credentials
+      Tags: 
+      - Key: Project
+        Value: HeliosTracker
+  
+  DataTable:
+    Type: AWS::DynamoDB::GlobalTable
+    Properties: 
+      AttributeDefinitions: 
+      - AttributeName: hash_key
+        AttributeType: S
+      - AttributeName: range_key
+        AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema: 
+      - AttributeName: hash_key
+        KeyType: HASH
+      - AttributeName: range_key
+        KeyType: RANGE
+      Replicas: 
+      - Region:
+          Ref: AWS::Region
+        Tags:
+        - Key: Project
+          Value: HeliosTracker
+      TableName: HeliosTracker
+      TimeToLiveSpecification: 
+        AttributeName: expires_at
+        Enabled: True
+    
