@@ -14,14 +14,31 @@ jobs:
       id-token: write
       contents: read
     steps:
+    - name: Set up HeliosTracker repository
+      uses: actions/checkout@v3
+      with:
+        path: heliostracker
+
+    - name: Set up ConEd repository
+      uses: actions/checkout@v3
+      with:
+        repository: varming/coned
+        path: coned
+
     - name: Set up Python
       uses: actions/setup-python@v3
       with:
         architecture: 'x64'
         python-version: '3.x'
         cache: pip
+        cache-dependency-path: |
+          **/requirements*.txt
+
     - name: Fetch Python dependencies
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r coned/requirements.txt
+        pip install -r heliostracker/requirements.txt
+
     - name: Configure AWS
       run: |
         set -eu -o pipefail
