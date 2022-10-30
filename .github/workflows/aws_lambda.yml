@@ -11,7 +11,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
     steps:
     - name: Set up HeliosTracker repository
@@ -29,15 +28,47 @@ jobs:
       uses: actions/setup-python@v3
       with:
         architecture: 'x64'
-        python-version: '3.x'
+        python-version: '3.9'
         cache: pip
         cache-dependency-path: |
           **/requirements*.txt
 
+    - name: Setup environment
+      run: |
+        python3 -m venv env
+
     - name: Fetch Python dependencies
       run: |
+        source env/bin/activate
         pip install -r coned/requirements.txt
         pip install -r heliostracker/requirements.txt
+
+    - name: Package program
+      run: |
+        cp -r heliostracker/src/* env/.
+
+    - name: Build artifact
+      run: |
+        pushd env/lib/python3.9/site-packages
+        zip -r ../../../../package.zip .
+        popd
+        zip -g package.zip heliostracker/src/*
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: package.zip
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: package.zip
 
     - name: Configure AWS
       run: |
@@ -51,5 +82,13 @@ jobs:
         echo AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION >> $GITHUB_ENV
         curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value' > $AWS_WEB_IDENTITY_TOKEN_FILE
 
-    - run: aws sts get-caller-identity
+    - name: Deploy via AWS CloudFormation
+      run: |
+        aws sts get-caller-identity
+        STAMP="$(date "+%Y-%m-%dT%H:%M:%S")-$(uuidgen)"
+        aws s3 cp package.zip "s3://heliostracker-deployments-162141084993/HeliosTracker/$STAMP/templates/package.zip"
+        aws s3 cp heliostracker/templates/heliostracker.yml "s3://heliostracker-deployments-162141084993/HeliosTracker/$STAMP/templates/heliostracker.yml"
+        aws cloudformation create-change-set --stack-name HeliosTracker --template-url "s3://heliostracker-deployments-162141084993/HeliosTracker/$STAMP/templates/heliostracker.yml" --capabilities CAPABILITY_IAM,CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND --change-set-name "HeliosTracker-$STAMP"
+        aws cloudformation describe-change-set --stack-name HeliosTracker --change-set-name "HeliosTracker-$STAMP"
+        aws cloudformation execute-change-set --stack-name HeliosTracker --change-set-name "HeliosTracker-$STAMP"
 
